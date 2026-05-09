@@ -42,6 +42,16 @@ To learn more about developing your project with Expo, look at the following res
 - [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
 - [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
 
+## Solana program address (submission)
+
+This prototype does not ship a custom on-chain Solana program yet. If a submission form requires a "Program Address", you can generate a stable Program ID (a keypair pubkey) and keep the keypair locally:
+
+```bash
+node scripts/generate-program-id.js --out .secrets/escrow-program-keypair.json
+```
+
+The command prints the Program ID to stdout.
+
 ## Join the community
 
 Join our community of developers creating universal apps.
