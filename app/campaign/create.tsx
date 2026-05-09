@@ -77,7 +77,8 @@ export default function CreateCampaignScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
           <Text style={styles.lede}>
-            Set the threshold. Buyers lock SOL in escrow until you hit it.
+            Set the threshold. In the current devnet demo, joins use a self-transfer placeholder;
+            escrow settlement ships next.
           </Text>
 
           <Field

@@ -248,8 +248,8 @@ export default function BridgeScreen() {
             <View style={styles.successCard}>
               <Text style={styles.successTitle}>Bridge initiated</Text>
               <Text style={styles.successBody}>
-                Your route is executing on LI.FI. Funds will land in your Solana wallet shortly —
-                you can already explore campaigns.
+                We fetched a real LI.FI quote. Execution is simulated in this demo (it requires an
+                EVM signer); once you fund your Solana wallet, you can join campaigns.
               </Text>
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
                 <Pressable

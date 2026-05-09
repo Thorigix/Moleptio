@@ -195,9 +195,9 @@ export default function CampaignDetailScreen() {
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>How settlement works</Text>
-            <Bullet colors={colors} text={`Reach ${campaign.targetParticipants} participants before the deadline.`} />
-            <Bullet colors={colors} text="Funds unlock to the seller when the threshold hits." />
-            <Bullet colors={colors} text="Miss it, and every participant is auto-refunded — on chain." />
+            <Bullet colors={colors} text={`Reach ${campaign.targetParticipants} participants before the deadline (campaign logic is currently simulated).`} />
+            <Bullet colors={colors} text="Joining signs a devnet self-transfer that matches the campaign price (transparent escrow placeholder)." />
+            <Bullet colors={colors} text="Escrow unlock/refund flows are planned and not live in this build yet." />
           </View>
         </View>
       </ScrollView>

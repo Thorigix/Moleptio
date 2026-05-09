@@ -31,7 +31,7 @@ export default function CampaignsScreen() {
               </Pressable>
             </View>
             <Text style={styles.subtitle}>
-              Open group-buys. Lock your share — settle when threshold hits.
+              Open group-buys. Join via a devnet demo transaction — escrow settlement is coming next.
             </Text>
           </View>
         }

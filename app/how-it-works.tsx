@@ -30,16 +30,18 @@ export default function HowItWorksScreen() {
           <Text style={styles.kicker}>How it works</Text>
           <Text style={styles.title}>Group-buy power,{'\n'}settled on Solana.</Text>
           <Text style={styles.lede}>
-            Moleptio is a mobile group-buy marketplace. Users pool their share into a campaign,
-            and when the threshold is met, the deal goes through — instantly, on-chain.
+            Moleptio is a mobile group-buy marketplace prototype. Today, joining a campaign is a
+            devnet transaction (a self-transfer placeholder) so you can see exactly what you’re
+            signing in Phantom. Escrow settlement and refunds are the next milestone.
           </Text>
         </View>
 
         <Card colors={colors}>
           <Text style={styles.cardEyebrow}>What is Moleptio?</Text>
           <Text style={styles.cardBody}>
-            A group-buy marketplace powered by Solana. Discover campaigns, lock in your spot with a
-            single Phantom approval, and settle the deal trustlessly on-chain.
+            A group-buy marketplace concept powered by Solana. Discover campaigns, reserve your
+            spot with a single Phantom approval (devnet), and follow along as on-chain settlement
+            evolves from demo to escrow.
           </Text>
         </Card>
 
@@ -56,20 +58,20 @@ export default function HowItWorksScreen() {
             colors={colors}
             n={2}
             title="Join a campaign"
-            body="Pick a campaign, hit Join, and approve the transaction in Phantom. Payment is processed on Solana devnet in seconds."
+            body="Pick a campaign, hit Join, and approve in Phantom. In this demo you sign a devnet self-transfer that matches the campaign price — a transparent placeholder for escrow."
           />
           <Step
             colors={colors}
             n={3}
-            title="Secure escrow-like settlement"
-            body="Funds flow through a secure escrow-like payment system. They are released to the seller once the campaign hits its threshold; if the campaign doesn't fund, participants are made whole."
+            title="Escrow settlement (coming next)"
+            body="The production design is escrow-style: funds unlock to the seller when the threshold hits, otherwise participants are refunded. This logic is not live yet in the current devnet demo."
           />
         </View>
 
         <Card colors={colors}>
           <Text style={styles.cardEyebrow}>Security model</Text>
           <Bullet colors={colors} text="Every transaction is signed by your wallet — Moleptio cannot move funds on your behalf." />
-          <Bullet colors={colors} text="Payment flow is governed by on-chain rules, not a third-party custodian." />
+          <Bullet colors={colors} text="In demo mode, joins are simple on-chain system transfers on devnet (self-transfer placeholder)." />
           <Bullet colors={colors} text="No off-chain account, no hidden balance — you stay in control of your assets." />
           <Bullet colors={colors} text="Every transaction is publicly auditable on the Solana explorer." />
         </Card>
@@ -83,7 +85,7 @@ export default function HowItWorksScreen() {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            Built for Solana · Devnet · Phantom-native
+            Built for Solana · Devnet demo · Phantom-native
           </Text>
         </View>
       </ScrollView>

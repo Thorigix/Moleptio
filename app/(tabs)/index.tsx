@@ -83,8 +83,8 @@ export default function HomeScreen() {
         <View style={styles.heroBlock}>
           <Text style={styles.heroTitle}>Buy together.{'\n'}Settle on-chain.</Text>
           <Text style={styles.heroBody}>
-            Lock your share into a campaign. Hit the threshold, the seller gets paid. Miss it, every
-            participant is auto-refunded.
+            Reserve your spot with a signed devnet transaction. Escrow settlement (seller payout +
+            refunds) is the next milestone — this build focuses on wallet UX and on-chain receipts.
           </Text>
         </View>
 
