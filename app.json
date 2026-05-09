@@ -12,6 +12,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.dev3pack.moleptio",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/MoleptioColored.png",
         "backgroundColor": "#FFFFFF"
