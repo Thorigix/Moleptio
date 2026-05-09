@@ -1,6 +1,6 @@
+import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
-import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -60,6 +60,11 @@ export default function ProfileScreen() {
   const { connected, connecting, publicKey, connect, disconnect } = useWallet();
   const { balance, loading: balanceLoading } = useWalletBalance(publicKey);
 
+  const refreshStatuses = useCampaignStore((s) => s.refreshStatuses);
+  useEffect(() => {
+    refreshStatuses();
+  }, [refreshStatuses]);
+
   const campaigns = useCampaignStore((s) => s.campaigns);
   const joinedIds = useCampaignStore((s) => s.joinedIds ?? {});
   const txByCampaign = useCampaignStore((s) => s.txByCampaign);
@@ -94,7 +99,7 @@ export default function ProfileScreen() {
   };
 
   const onOpenExplorer = (signature: string) => {
-    Linking.openURL(explorerUrl(signature)).catch(() => {});
+    Linking.openURL(explorerUrl(signature)).catch(() => { });
   };
 
   return (

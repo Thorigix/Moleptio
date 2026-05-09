@@ -33,7 +33,10 @@ export function CampaignCard({ campaign }: Props) {
         <Text style={styles.title} numberOfLines={2}>
           {campaign.title}
         </Text>
-        <Text style={styles.seller}>by {campaign.sellerName}</Text>
+        <Text style={styles.seller}>
+          by {campaign.sellerName}
+          {campaign.sellerVerified ? <Text style={styles.verified}> · Verified</Text> : null}
+        </Text>
 
         <CampaignProgress
           current={campaign.currentParticipants}
@@ -95,6 +98,7 @@ const makeStyles = (c: ThemeColors) =>
     deadline: { color: c.textSubtle, fontSize: 12, fontWeight: '500' },
     title: { color: c.text, fontSize: 18, fontWeight: '600', letterSpacing: -0.2 },
     seller: { color: c.textSubtle, fontSize: 13, marginTop: -6 },
+    verified: { color: c.accentText, fontWeight: '600' },
     footer: {
       flexDirection: 'row',
       justifyContent: 'space-between',

@@ -12,6 +12,29 @@ type Step = {
 };
 
 function buildSteps(hasTx: boolean, status: Campaign['status']): Step[] {
+  if (status === 'expired') {
+    return [
+      {
+        label: 'Payment Confirmed',
+        sublabel: hasTx ? 'On-chain' : 'No receipt',
+        done: hasTx,
+        active: true,
+      },
+      {
+        label: 'Campaign Ended',
+        sublabel: 'Deadline reached',
+        done: true,
+        active: true,
+      },
+      {
+        label: 'Refund',
+        sublabel: 'Escrow coming next',
+        done: false,
+        active: false,
+      },
+    ];
+  }
+
   const confirmed = hasTx;
   const thresholdMet = status === 'funded' || status === 'settled';
   const fulfilled = status === 'settled';

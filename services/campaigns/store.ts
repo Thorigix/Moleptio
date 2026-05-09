@@ -38,6 +38,7 @@ type CampaignState = {
 
   getById: (id: string) => Campaign | undefined;
   isJoined: (id: string) => boolean;
+  refreshStatuses: () => void;
   createCampaign: (input: CampaignInput) => Campaign;
   join: (id: string) => void;
   recordTx: (id: string, signature: string) => void;
@@ -50,21 +51,35 @@ const DEFAULT_IMAGE =
 const newId = () =>
   `cmp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
+function deriveStatus(c: Campaign, now: number): Campaign['status'] {
+  // Settled is terminal.
+  if (c.status === 'settled') return 'settled';
+  // Threshold met has priority over time expiry.
+  if (c.currentParticipants >= c.targetParticipants) return 'funded';
+  // If deadline has passed and threshold is not met.
+  if (now >= c.deadline) return 'expired';
+  return 'active';
+}
+
 function deriveCampaigns(
   userCampaigns: Campaign[],
   bumps: Record<string, number>,
 ): Campaign[] {
   const merged: Campaign[] = [...userCampaigns, ...SEED_CAMPAIGNS];
+  const now = Date.now();
   return merged.map((c) => {
     const bump = bumps[c.id] ?? 0;
-    if (!bump) return c;
-    const next = Math.max(
-      0,
-      Math.min(c.targetParticipants, c.currentParticipants + bump),
+    const nextParticipants = bump
+      ? Math.max(0, Math.min(c.targetParticipants, c.currentParticipants + bump))
+      : c.currentParticipants;
+
+    const nextStatus = deriveStatus(
+      bump ? { ...c, currentParticipants: nextParticipants } : c,
+      now,
     );
-    const status =
-      next >= c.targetParticipants && c.status === 'active' ? 'funded' : c.status;
-    return { ...c, currentParticipants: next, status };
+
+    if (!bump && nextStatus === c.status) return c;
+    return { ...c, currentParticipants: nextParticipants, status: nextStatus };
   });
 }
 
@@ -80,6 +95,11 @@ export const useCampaignStore = create<CampaignState>()(
 
       getById: (id) => get().campaigns.find((c) => c.id === id),
       isJoined: (id) => get().joinedIds[id] === true,
+
+      refreshStatuses: () =>
+        set((state) => ({
+          campaigns: deriveCampaigns(state.userCampaigns, state.participantBumps),
+        })),
 
       createCampaign: (input) => {
         const campaign: Campaign = {

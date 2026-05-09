@@ -33,6 +33,7 @@ export default function CampaignDetailScreen() {
   const txRecord = useCampaignStore((s) => (id ? s.txByCampaign[id] : undefined));
   const join = useCampaignStore((s) => s.join);
   const recordTx = useCampaignStore((s) => s.recordTx);
+  const refreshStatuses = useCampaignStore((s) => s.refreshStatuses);
   const { connected, publicKey, connect, signAndSendTransaction } = useWallet();
   const txState = useTxStore((s) => s.state);
   const txSignature = useTxStore((s) => s.signature);
@@ -47,6 +48,10 @@ export default function CampaignDetailScreen() {
     txState === 'building' ||
     txState === 'awaiting_phantom' ||
     txState === 'confirming';
+
+  useEffect(() => {
+    refreshStatuses();
+  }, [refreshStatuses]);
 
   useEffect(() => {
     const { campaignId, state } = useTxStore.getState();
@@ -67,6 +72,27 @@ export default function CampaignDetailScreen() {
     () => (campaign ? formatDeadline(campaign.deadline) : ''),
     [campaign],
   );
+
+  const sellerTrust = useMemo(() => {
+    if (!campaign) return null;
+    const ratingKnown =
+      typeof campaign.sellerRating === 'number' &&
+      typeof campaign.sellerRatingsCount === 'number';
+    return {
+      verified: campaign.sellerVerified === true,
+      ratingText: ratingKnown
+        ? `${campaign.sellerRating!.toFixed(1)} / 5 (${campaign.sellerRatingsCount} ratings)`
+        : 'New seller (no ratings yet)',
+      salesText:
+        typeof campaign.sellerSalesCount === 'number'
+          ? `${campaign.sellerSalesCount} sales`
+          : '—',
+      fulfillmentText:
+        typeof campaign.fulfillmentWindowDays === 'number'
+          ? `${campaign.fulfillmentWindowDays}d fulfillment window`
+          : 'Fulfillment window: TBD',
+    };
+  }, [campaign]);
 
   const lastClickRef = useRef(0);
 
@@ -162,7 +188,10 @@ export default function CampaignDetailScreen() {
           </View>
 
           <Text style={styles.title}>{campaign.title}</Text>
-          <Text style={styles.seller}>by {campaign.sellerName}</Text>
+          <Text style={styles.seller}>
+            by {campaign.sellerName}
+            {sellerTrust?.verified ? <Text style={styles.verifiedInline}> · Verified</Text> : null}
+          </Text>
 
           <View style={styles.statsBlock}>
             <CampaignProgress
@@ -176,6 +205,15 @@ export default function CampaignDetailScreen() {
                 label="Joined"
                 value={`${campaign.currentParticipants}/${campaign.targetParticipants}`}
               />
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Seller & trust</Text>
+            <View style={styles.trustCard}>
+              <TrustRow colors={colors} k="Reputation" v={sellerTrust?.ratingText ?? '—'} />
+              <TrustRow colors={colors} k="Sales" v={sellerTrust?.salesText ?? '—'} />
+              <TrustRow colors={colors} k="Fulfillment" v={sellerTrust?.fulfillmentText ?? '—'} />
             </View>
           </View>
 
@@ -198,6 +236,12 @@ export default function CampaignDetailScreen() {
             <Bullet colors={colors} text={`Reach ${campaign.targetParticipants} participants before the deadline (campaign logic is currently simulated).`} />
             <Bullet colors={colors} text="Joining signs a devnet self-transfer that matches the campaign price (transparent escrow placeholder)." />
             <Bullet colors={colors} text="Escrow unlock/refund flows are planned and not live in this build yet." />
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Terms</Text>
+            <Bullet colors={colors} text="Devnet demo only — always verify transaction details in Phantom before approving." />
+            <Bullet colors={colors} text="Reputation signals are demo metadata and not an on-chain guarantee." />
           </View>
         </View>
       </ScrollView>
@@ -290,6 +334,18 @@ function Bullet({ colors, text }: { colors: ThemeColors; text: string }) {
   );
 }
 
+function TrustRow({ colors, k, v }: { colors: ThemeColors; k: string; v: string }) {
+  const styles = makeStyles(colors);
+  return (
+    <View style={styles.trustRow}>
+      <Text style={styles.trustK}>{k}</Text>
+      <Text style={styles.trustV} numberOfLines={1}>
+        {v}
+      </Text>
+    </View>
+  );
+}
+
 function StatusPill({ colors, status }: { colors: ThemeColors; status: Campaign['status'] }) {
   const styles = makeStyles(colors);
   const map: Record<Campaign['status'], { label: string; bg: string; fg: string }> = {
@@ -356,6 +412,7 @@ const makeStyles = (c: ThemeColors) =>
     deadline: { color: c.textSubtle, fontSize: 13, fontWeight: '500' },
     title: { color: c.text, fontSize: 28, fontWeight: '700', letterSpacing: -0.5, marginTop: -4 },
     seller: { color: c.textSubtle, fontSize: 14, marginTop: -10 },
+    verifiedInline: { color: c.accentText, fontWeight: '600' },
 
     pill: {
       flexDirection: 'row',
@@ -385,6 +442,23 @@ const makeStyles = (c: ThemeColors) =>
     section: { gap: 10, marginTop: 6 },
     sectionTitle: { color: c.text, fontSize: 16, fontWeight: '600' },
     body: { color: c.textMuted, fontSize: 15, lineHeight: 23 },
+
+    trustCard: {
+      backgroundColor: c.bgCard,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: c.border,
+      padding: 14,
+      gap: 10,
+    },
+    trustRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'baseline',
+      gap: 12,
+    },
+    trustK: { color: c.textSubtle, fontSize: 12, fontWeight: '600', letterSpacing: 0.4 },
+    trustV: { color: c.text, fontSize: 12, fontWeight: '600', flex: 1, textAlign: 'right' },
 
     bullet: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
     bulletDot: {

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,9 +9,14 @@ import { ThemeColors, useTheme } from '@/services/theme';
 
 export default function CampaignsScreen() {
   const campaigns = useCampaignStore((s) => s.campaigns);
+  const refreshStatuses = useCampaignStore((s) => s.refreshStatuses);
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  useEffect(() => {
+    refreshStatuses();
+  }, [refreshStatuses]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

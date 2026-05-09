@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   FlatList,
   Pressable,
@@ -24,9 +24,14 @@ export default function HomeScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const { connected } = useWallet();
+  const refreshStatuses = useCampaignStore((s) => s.refreshStatuses);
   const campaigns = useCampaignStore((s) => s.campaigns);
   const joinedIds = useCampaignStore((s) => s.joinedIds ?? {});
   const txByCampaign = useCampaignStore((s) => s.txByCampaign);
+
+  useEffect(() => {
+    refreshStatuses();
+  }, [refreshStatuses]);
 
   const trending = useMemo(
     () =>
