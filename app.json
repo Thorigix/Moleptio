@@ -34,7 +34,7 @@
           "backgroundColor": "#FFFFFF",
           "dark": {
             "image": "./assets/images/MoleptioColored.png",
-            "backgroundColor": "#111111"
+            "backgroundColor": "#0B0B12"
           }
         }
       ]

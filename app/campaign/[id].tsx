@@ -50,9 +50,10 @@ export default function CampaignDetailScreen() {
 
   useEffect(() => {
     const { campaignId, state } = useTxStore.getState();
-    // If this campaign was already joined before this mount (persisted state),
-    // clear any leftover success/error UI from a prior visit in this app session.
-    if (initialJoinedRef.current && (state === 'success' || state === 'error')) {
+    // Read join state directly from the store (hydrated by the time this effect
+    // fires, since SplashGate gates navigation until _hasHydrated is true).
+    const alreadyJoined = id ? useCampaignStore.getState().joinedIds[id] === true : false;
+    if (alreadyJoined && (state === 'success' || state === 'error')) {
       resetTx();
       return;
     }
@@ -67,7 +68,6 @@ export default function CampaignDetailScreen() {
     [campaign],
   );
 
-  const initialJoinedRef = useRef(joined);
   const lastClickRef = useRef(0);
 
   const runJoin = useCallback(async () => {
@@ -79,14 +79,15 @@ export default function CampaignDetailScreen() {
     console.log(`[Join] building self-transfer tx for ${campaign.price} SOL…`);
     try {
       const txB58 = await buildSelfTransferTx(publicKey, campaign.price);
-      const signature = await signAndSendTransaction(txB58);
-      console.log('[Join] ✓ confirmed, flipping joined state:', signature);
+      // campaignId travels in the redirect URL so handleSignCallback can
+      // persist the join even if Android killed this process mid-flight.
+      const signature = await signAndSendTransaction(txB58, campaign.id);
+      console.log('[Join] ✓ confirmed', signature);
       setTxSignature(signature);
       setTxState('success');
-      // Persisted truth: a confirmed signature means the user has joined.
-      // Order matters — flip joined state first, then record the receipt
-      // against it, so a crash between the two never leaves a tx record
-      // pointing at a campaign the user isn't in.
+      // Idempotent fallback for the non-kill path. handleSignCallback already
+      // called these via the deep-link params; the store guards prevent
+      // double-joins and recordTx simply overwrites with the same data.
       join(campaign.id);
       recordTx(campaign.id, signature);
     } catch (e: any) {

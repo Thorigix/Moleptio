@@ -5,14 +5,13 @@ import { Animated, Image, StyleSheet, View } from 'react-native';
 import { useCampaignsHydrated } from '@/services/campaigns/store';
 import { useTheme } from '@/services/theme';
 
-const LIGHT_THEME_LOGO = require('@/assets/images/MoleptioDark.png');
-const DARK_THEME_LOGO = require('@/assets/images/MoleptioLight.png');
+const LOGO = require('@/assets/images/MoleptioColored.png');
 const MIN_SPLASH_MS = 1200;
 
 type Props = { children: React.ReactNode };
 
 export function SplashGate({ children }: Props) {
-  const { resolvedMode, colors } = useTheme();
+  const { colors } = useTheme();
   const hydrated = useCampaignsHydrated();
   const [minElapsed, setMinElapsed] = useState(false);
   const [hidden, setHidden] = useState(false);
@@ -52,7 +51,7 @@ export function SplashGate({ children }: Props) {
         <Animated.View
           style={[styles.cover, { opacity, backgroundColor: colors.bg }]}
           pointerEvents={hidden ? 'none' : 'auto'}>
-          <Image source={resolvedMode === 'dark' ? DARK_THEME_LOGO : LIGHT_THEME_LOGO} resizeMode="contain" style={styles.logo} />
+          <Image source={LOGO} resizeMode="contain" style={styles.logo} />
         </Animated.View>
       )}
     </View>

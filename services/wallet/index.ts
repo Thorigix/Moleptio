@@ -10,6 +10,7 @@ import {
   encryptPayload,
 } from './crypto';
 import { connection } from '../solana/connection';
+import { useCampaignStore } from '@/services/campaigns/store';
 import { useTxStore } from '../tx/state';
 import { useWalletStore } from './store';
 import {
@@ -89,7 +90,16 @@ export function disconnect() {
 // Caller produces the base58-encoded serialized Solana transaction. Once the
 // escrow contract is wired in a later task, this stays unchanged — only the
 // caller side needs to build the Transaction object.
-export function signAndSendTransaction(transactionBase58: string): Promise<string> {
+//
+// `campaignId` is encoded in the redirect URL so it survives an Android
+// process kill during the Phantom round-trip. handleSignCallback reads it
+// back from the deep-link params and writes the join to the campaign store
+// before resolving the Promise, making persistence independent of component
+// lifecycle.
+export function signAndSendTransaction(
+  transactionBase58: string,
+  campaignId?: string,
+): Promise<string> {
   return new Promise(async (resolve, reject) => {
     const session = useWalletStore.getState().session;
     if (!session) return reject(new Error('Wallet not connected'));
@@ -104,11 +114,18 @@ export function signAndSendTransaction(transactionBase58: string): Promise<strin
       session.sharedSecret,
     );
 
+    // Embed campaignId in the redirect URL so it comes back in the deep-link
+    // params even if Android killed the process and pendingSign is gone.
+    const redirectBase = redirect('phantom/sign');
+    const redirectLink = campaignId
+      ? `${redirectBase}?campaignId=${encodeURIComponent(campaignId)}`
+      : redirectBase;
+
     const params = new URLSearchParams({
       dapp_encryption_public_key: encodeBs58(dappKeyPair.publicKey),
       nonce,
       payload: data,
-      redirect_link: redirect('phantom/sign'),
+      redirect_link: redirectLink,
     });
 
     try {
@@ -249,6 +266,17 @@ async function handleSignCallback(qp: Record<string, string | undefined>) {
       console.warn('[CONFIRM] fail', result.value.err);
       fail(`Transaction failed on-chain: ${JSON.stringify(result.value.err)}`);
       return;
+    }
+
+    // Persist the join state here — before any UI update — so it survives
+    // an Android process kill. If pendingSign.resolve later wakes runJoin,
+    // the store's own guard (joinedIds[id] check) makes the second call
+    // a safe no-op.
+    const campaignId = qp.campaignId;
+    if (campaignId) {
+      console.log('[CONFIRM] persisting join →', campaignId);
+      useCampaignStore.getState().join(campaignId);
+      useCampaignStore.getState().recordTx(campaignId, signature);
     }
 
     console.log('[CONFIRM] success', signature);
