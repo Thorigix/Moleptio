@@ -1,6 +1,8 @@
+import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Image, StyleSheet, View } from 'react-native';
 
+import { useCampaignsHydrated } from '@/services/campaigns/store';
 import { useTheme } from '@/services/theme';
 
 const LIGHT_THEME_LOGO = require('@/assets/images/MoleptioDark.png');
@@ -11,21 +13,37 @@ type Props = { children: React.ReactNode };
 
 export function SplashGate({ children }: Props) {
   const { resolvedMode, colors } = useTheme();
+  const hydrated = useCampaignsHydrated();
+  const [minElapsed, setMinElapsed] = useState(false);
   const [hidden, setHidden] = useState(false);
   const opacity = useRef(new Animated.Value(1)).current;
+  const dismissedRef = useRef(false);
+
+  // Hand off from native splash to in-app overlay immediately on mount.
+  // The in-app cover is already visible, so the user sees no gap.
+  useEffect(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 320,
-        useNativeDriver: true,
-      }).start(() => setHidden(true));
-    }, MIN_SPLASH_MS);
+    const t = setTimeout(() => setMinElapsed(true), MIN_SPLASH_MS);
     return () => clearTimeout(t);
-  }, [opacity]);
+  }, []);
 
-  const source = resolvedMode === 'dark' ? DARK_THEME_LOGO : LIGHT_THEME_LOGO;
+  // Dismiss when BOTH the minimum splash duration has passed AND the
+  // persisted campaign store has rehydrated. This is the fix for the
+  // "joined → not joined → joined" flicker: children render against a
+  // store that already has joinedIds restored.
+  useEffect(() => {
+    if (dismissedRef.current) return;
+    if (!minElapsed || !hydrated) return;
+    dismissedRef.current = true;
+    Animated.timing(opacity, {
+      toValue: 0,
+      duration: 320,
+      useNativeDriver: true,
+    }).start(() => setHidden(true));
+  }, [minElapsed, hydrated, opacity]);
 
   return (
     <View style={styles.root}>
@@ -34,7 +52,7 @@ export function SplashGate({ children }: Props) {
         <Animated.View
           style={[styles.cover, { opacity, backgroundColor: colors.bg }]}
           pointerEvents={hidden ? 'none' : 'auto'}>
-          <Image source={source} resizeMode="contain" style={styles.logo} />
+          <Image source={resolvedMode === 'dark' ? DARK_THEME_LOGO : LIGHT_THEME_LOGO} resizeMode="contain" style={styles.logo} />
         </Animated.View>
       )}
     </View>

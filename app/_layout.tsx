@@ -1,5 +1,9 @@
 import '@/polyfills';
 
+import * as SplashScreen from 'expo-splash-screen';
+// Prevent the native splash from auto-hiding before SplashGate takes over.
+SplashScreen.preventAutoHideAsync();
+
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -55,6 +59,7 @@ function ThemedRoot() {
           />
           <Stack.Screen name="how-it-works" options={{ headerShown: false }} />
           <Stack.Screen name="bridge/index" options={{ headerShown: false }} />
+          <Stack.Screen name="profile" options={{ headerShown: false }} />
         </Stack>
         <StatusBar style={resolvedMode === 'dark' ? 'light' : 'dark'} />
       </View>

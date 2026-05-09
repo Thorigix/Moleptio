@@ -2,7 +2,6 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   ScrollView,
@@ -13,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandLogo } from '@/components/brand-logo';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useWallet } from '@/hooks/useWallet';
 import { useCampaignStore } from '@/services/campaigns/store';
 import { ThemeColors, useTheme } from '@/services/theme';
@@ -23,9 +23,10 @@ export default function HomeScreen() {
   const { colors, resolvedMode, toggle } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const { connected, connecting, publicKey, connect } = useWallet();
+  const { connected } = useWallet();
   const campaigns = useCampaignStore((s) => s.campaigns);
-  const joinedIds = useCampaignStore((s) => s.joinedIds);
+  const joinedIds = useCampaignStore((s) => s.joinedIds ?? {});
+  const txByCampaign = useCampaignStore((s) => s.txByCampaign);
 
   const trending = useMemo(
     () =>
@@ -37,11 +38,21 @@ export default function HomeScreen() {
   );
 
   const yourActivity = useMemo(
-    () => campaigns.filter((c) => joinedIds.has(c.id)).slice(0, 4),
+    () => campaigns.filter((c) => (joinedIds as Record<string, true>)[c.id] === true).slice(0, 4),
     [campaigns, joinedIds],
   );
 
-  const shortKey = publicKey ? `${publicKey.slice(0, 4)}…${publicKey.slice(-4)}` : null;
+  const activityFeed = useMemo(() => {
+    const entries = Object.entries(txByCampaign).map(([cid, rec]) => {
+      const campaign = campaigns.find((c) => c.id === cid);
+      if (!campaign) return null;
+      return { id: cid, title: campaign.title, price: campaign.price, ...rec };
+    });
+    return entries
+      .filter((e): e is NonNullable<typeof entries[number]> => e !== null)
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 5);
+  }, [txByCampaign, campaigns]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -54,13 +65,18 @@ export default function HomeScreen() {
               style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}>
               <Text style={styles.iconBtnText}>{resolvedMode === 'dark' ? '☀' : '☾'}</Text>
             </Pressable>
-            <WalletPill
-              colors={colors}
-              connected={connected}
-              connecting={connecting}
-              shortKey={shortKey}
-              onConnect={connect}
-            />
+            <Pressable
+              onPress={() => router.push('/profile')}
+              accessibilityRole="button"
+              accessibilityLabel="Profile"
+              style={({ pressed }) => [styles.profileBtn, pressed && styles.pressed]}>
+              <IconSymbol
+                name="person.fill"
+                size={18}
+                color={connected ? colors.accentText : colors.text}
+              />
+              {connected && <View style={styles.profileDot} />}
+            </Pressable>
           </View>
         </View>
 
@@ -116,6 +132,28 @@ export default function HomeScreen() {
           </>
         )}
 
+        {activityFeed.length > 0 && (
+          <>
+            <SectionHeader colors={colors} title="Recent activity" />
+            <View style={styles.feedList}>
+              {activityFeed.map((entry, i) => (
+                <FeedRow
+                  key={entry.id}
+                  colors={colors}
+                  title={entry.title}
+                  price={entry.price}
+                  signature={entry.signature}
+                  ts={entry.ts}
+                  isLast={i === activityFeed.length - 1}
+                  onPress={() =>
+                    router.push({ pathname: '/campaign/[id]', params: { id: entry.id } })
+                  }
+                />
+              ))}
+            </View>
+          </>
+        )}
+
         <View style={styles.ctaWrap}>
           <Pressable
             onPress={() => router.push('/campaign/create')}
@@ -134,14 +172,9 @@ export default function HomeScreen() {
 
           <Pressable
             onPress={() => router.push('/bridge')}
-            style={({ pressed }) => [styles.bridgeCard, pressed && styles.pressed]}>
-            <View style={styles.bridgeIcon}>
-              <Text style={styles.bridgeIconText}>⇄</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.bridgeTitle}>Fund with cross-chain assets</Text>
-              <Text style={styles.bridgeSub}>Bridge USDC from EVM chains via LI.FI.</Text>
-            </View>
+            hitSlop={6}
+            style={({ pressed }) => [styles.bridgeRow, pressed && styles.pressed]}>
+            <Text style={styles.bridgeRowText}>Fund with cross-chain assets</Text>
             <Text style={styles.bridgeArrow}>›</Text>
           </Pressable>
 
@@ -154,42 +187,6 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function WalletPill({
-  colors,
-  connected,
-  connecting,
-  shortKey,
-  onConnect,
-}: {
-  colors: ThemeColors;
-  connected: boolean;
-  connecting: boolean;
-  shortKey: string | null;
-  onConnect: () => void;
-}) {
-  const styles = makeStyles(colors);
-  if (connected && shortKey) {
-    return (
-      <View style={styles.walletPill}>
-        <View style={styles.walletDot} />
-        <Text style={styles.walletPillText}>{shortKey}</Text>
-      </View>
-    );
-  }
-  return (
-    <Pressable
-      onPress={onConnect}
-      disabled={connecting}
-      style={({ pressed }) => [styles.connectBtn, pressed && styles.pressed]}>
-      {connecting ? (
-        <ActivityIndicator color={colors.ctaText} size="small" />
-      ) : (
-        <Text style={styles.connectBtnText}>Connect</Text>
-      )}
-    </Pressable>
   );
 }
 
@@ -282,6 +279,52 @@ function ActivityRow({
   );
 }
 
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function FeedRow({
+  colors,
+  title,
+  price,
+  signature,
+  ts,
+  isLast,
+  onPress,
+}: {
+  colors: ThemeColors;
+  title: string;
+  price: number;
+  signature: string;
+  ts: number;
+  isLast: boolean;
+  onPress: () => void;
+}) {
+  const styles = makeStyles(colors);
+  const shortSig = `${signature.slice(0, 5)}…${signature.slice(-4)}`;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.feedRow, !isLast && styles.feedRowBorder, pressed && styles.pressed]}>
+      <View style={styles.feedDot} />
+      <View style={styles.feedBody}>
+        <Text style={styles.feedTitle} numberOfLines={1}>{title}</Text>
+        <Text style={styles.feedSub}>
+          {price} SOL · confirmed · <Text style={styles.feedSig}>{shortSig}</Text>
+        </Text>
+      </View>
+      <Text style={styles.feedTime}>{relativeTime(ts)}</Text>
+    </Pressable>
+  );
+}
+
 function EmptyTile({ colors, text }: { colors: ThemeColors; text: string }) {
   const styles = makeStyles(colors);
   return (
@@ -317,26 +360,27 @@ const makeStyles = (c: ThemeColors) =>
     },
     iconBtnText: { color: c.text, fontSize: 16 },
 
-    walletPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 999,
-      backgroundColor: c.accentSoft,
+    profileBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       borderWidth: 1,
-      borderColor: c.accentSoft,
+      borderColor: c.border,
+      backgroundColor: c.bgElevated,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    walletDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: c.success },
-    walletPillText: { color: c.accentText, fontSize: 12, fontWeight: '600' },
-    connectBtn: {
-      backgroundColor: c.cta,
-      paddingHorizontal: 14,
-      paddingVertical: 9,
-      borderRadius: 999,
+    profileDot: {
+      position: 'absolute',
+      top: 4,
+      right: 4,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: c.success,
+      borderWidth: 1.5,
+      borderColor: c.bg,
     },
-    connectBtnText: { color: c.ctaText, fontSize: 13, fontWeight: '600' },
 
     heroBlock: { paddingHorizontal: 20, gap: 8, marginTop: 8 },
     heroTitle: { color: c.text, fontSize: 34, fontWeight: '700', letterSpacing: -0.8, lineHeight: 40 },
@@ -396,6 +440,35 @@ const makeStyles = (c: ThemeColors) =>
     },
     activityBadgeText: { color: c.success, fontSize: 11, fontWeight: '700' },
 
+    feedList: {
+      marginHorizontal: 20,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.bgCard,
+      overflow: 'hidden',
+    },
+    feedRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    feedRowBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
+    feedDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: c.success,
+      flexShrink: 0,
+    },
+    feedBody: { flex: 1, gap: 2 },
+    feedTitle: { color: c.text, fontSize: 14, fontWeight: '500' },
+    feedSub: { color: c.textSubtle, fontSize: 12 },
+    feedSig: { color: c.accentText, fontFamily: 'Courier' },
+    feedTime: { color: c.textSubtle, fontSize: 11, flexShrink: 0 },
+
     ctaWrap: { paddingHorizontal: 20, marginTop: 4 },
     cta: {
       backgroundColor: c.cta,
@@ -416,28 +489,16 @@ const makeStyles = (c: ThemeColors) =>
     ctaSubtitle: { color: 'rgba(255, 255, 255, 0.8)', fontSize: 12, marginTop: 2 },
     ctaArrow: { color: c.ctaText, fontSize: 28, fontWeight: '300', opacity: 0.85 },
 
-    bridgeCard: {
-      marginTop: 12,
+    bridgeRow: {
+      marginTop: 14,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 12,
-      backgroundColor: c.bgCard,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: c.border,
-      padding: 14,
+      justifyContent: 'space-between',
+      paddingVertical: 14,
+      borderTopWidth: 1,
+      borderTopColor: c.border,
     },
-    bridgeIcon: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
-      backgroundColor: c.accentSoft,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    bridgeIconText: { color: c.accentText, fontSize: 18, fontWeight: '700' },
-    bridgeTitle: { color: c.text, fontSize: 14, fontWeight: '700' },
-    bridgeSub: { color: c.textSubtle, fontSize: 12, marginTop: 2 },
+    bridgeRowText: { color: c.text, fontSize: 14, fontWeight: '500' },
     bridgeArrow: { color: c.textSubtle, fontSize: 22, fontWeight: '300' },
 
     howLink: { alignSelf: 'center', marginTop: 16, paddingVertical: 8, paddingHorizontal: 12 },

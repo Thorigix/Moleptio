@@ -34,10 +34,14 @@ export default function PhantomConnectCallback() {
   // The deeplink listener registered in app/_layout.tsx decrypts the payload
   // and writes the session to the store. We just wait for that to land, then
   // bounce back to home. 8s safety timeout in case something goes wrong.
+  //
+  // The setTimeout(0) is intentional: Phantom sometimes redirects back before
+  // Expo Router's Root Layout has finished mounting its navigator. Deferring
+  // one tick guarantees the navigator exists before we call replace().
   useEffect(() => {
     if (session) {
-      router.replace('/');
-      return;
+      const t = setTimeout(() => router.replace('/(tabs)'), 0);
+      return () => clearTimeout(t);
     }
     const t = setTimeout(() => setTimedOut(true), 8000);
     return () => clearTimeout(t);

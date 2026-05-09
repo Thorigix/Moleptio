@@ -30,7 +30,7 @@ export function TxSuccessModal({ visible, signature, onClose }: Props) {
           <Text style={styles.title}>Transaction confirmed</Text>
           <Text style={styles.subtitle}>You’re locked into this group-buy.</Text>
 
-          <View style={styles.sigBox}>
+          <View style={styles.sigBlock}>
             <Text style={styles.sigLabel}>Signature</Text>
             <Text style={styles.sigValue}>{short}</Text>
           </View>
@@ -92,12 +92,8 @@ const makeStyles = (c: ThemeColors) =>
     },
     subtitle: { color: c.textSubtle, fontSize: 14, textAlign: 'center', marginBottom: 6 },
 
-    sigBox: {
-      backgroundColor: c.bgInset,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: c.border,
-      padding: 14,
+    sigBlock: {
+      paddingVertical: 8,
       gap: 4,
       alignItems: 'center',
     },

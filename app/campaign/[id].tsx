@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CampaignProgress } from '@/components/campaign-progress';
+import { CampaignStatusTrack } from '@/components/campaign-status-track';
 import { TxErrorToast } from '@/components/tx-error-toast';
 import { TxSuccessModal } from '@/components/tx-success-modal';
 import { useWallet } from '@/hooks/useWallet';
@@ -28,9 +29,10 @@ export default function CampaignDetailScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const campaign = useCampaignStore((s) => s.campaigns.find((c) => c.id === id));
-  const joined = useCampaignStore((s) => (id ? s.joinedIds.has(id) : false));
+  const joined = useCampaignStore((s) => (id ? (s.joinedIds ?? {})[id] === true : false));
+  const txRecord = useCampaignStore((s) => (id ? s.txByCampaign[id] : undefined));
   const join = useCampaignStore((s) => s.join);
-  const leave = useCampaignStore((s) => s.leave);
+  const recordTx = useCampaignStore((s) => s.recordTx);
   const { connected, publicKey, connect, signAndSendTransaction } = useWallet();
   const txState = useTxStore((s) => s.state);
   const txSignature = useTxStore((s) => s.signature);
@@ -48,6 +50,13 @@ export default function CampaignDetailScreen() {
 
   useEffect(() => {
     const { campaignId, state } = useTxStore.getState();
+    // If this campaign was already joined before this mount (persisted state),
+    // clear any leftover success/error UI from a prior visit in this app session.
+    if (initialJoinedRef.current && (state === 'success' || state === 'error')) {
+      resetTx();
+      return;
+    }
+    // Clear in-flight state belonging to a different campaign.
     if (state !== 'idle' && campaignId && campaignId !== id) {
       resetTx();
     }
@@ -58,6 +67,7 @@ export default function CampaignDetailScreen() {
     [campaign],
   );
 
+  const initialJoinedRef = useRef(joined);
   const lastClickRef = useRef(0);
 
   const runJoin = useCallback(async () => {
@@ -73,14 +83,19 @@ export default function CampaignDetailScreen() {
       console.log('[Join] ✓ confirmed, flipping joined state:', signature);
       setTxSignature(signature);
       setTxState('success');
+      // Persisted truth: a confirmed signature means the user has joined.
+      // Order matters — flip joined state first, then record the receipt
+      // against it, so a crash between the two never leaves a tx record
+      // pointing at a campaign the user isn't in.
       join(campaign.id);
+      recordTx(campaign.id, signature);
     } catch (e: any) {
       const msg = e?.message ?? 'Unknown error';
       console.warn('[Join] failed', msg);
       setTxError(msg);
       setTxState('error');
     }
-  }, [campaign, publicKey, signAndSendTransaction, setTxError, setTxSignature, setTxState, setTxCampaignId, join]);
+  }, [campaign, publicKey, signAndSendTransaction, setTxError, setTxSignature, setTxState, setTxCampaignId, join, recordTx]);
 
   const onPrimary = () => {
     const now = Date.now();
@@ -90,7 +105,9 @@ export default function CampaignDetailScreen() {
     if (inFlight) return;
     if (!connected) return connect();
     if (!campaign) return;
-    if (joined) return leave(campaign.id);
+    // Joined is terminal — no leave path. Pressing the CTA in the joined
+    // state is a no-op.
+    if (joined) return;
     if (campaign.status !== 'active' || !publicKey) return;
     runJoin();
   };
@@ -117,6 +134,7 @@ export default function CampaignDetailScreen() {
   }
 
   const canJoin = campaign.status === 'active' && !joined;
+  const ctaDisabled = inFlight || joined || (connected && !canJoin);
   const primaryLabel = labelForUI({
     txState,
     connected,
@@ -145,27 +163,29 @@ export default function CampaignDetailScreen() {
           <Text style={styles.title}>{campaign.title}</Text>
           <Text style={styles.seller}>by {campaign.sellerName}</Text>
 
-          <View style={styles.statsCard}>
+          <View style={styles.statsBlock}>
             <CampaignProgress
               current={campaign.currentParticipants}
               target={campaign.targetParticipants}
             />
             <View style={styles.statsRow}>
               <Stat colors={colors} label="Price" value={`${campaign.price} SOL`} />
-              <View style={styles.statDivider} />
               <Stat
                 colors={colors}
                 label="Joined"
                 value={`${campaign.currentParticipants}/${campaign.targetParticipants}`}
               />
-              <View style={styles.statDivider} />
-              <Stat
-                colors={colors}
-                label="Locked"
-                value={`${(campaign.price * campaign.currentParticipants).toFixed(2)} SOL`}
-              />
             </View>
           </View>
+
+          {joined && (
+            <View style={styles.section}>
+              <CampaignStatusTrack
+                hasTx={!!txRecord}
+                campaignStatus={campaign.status}
+              />
+            </View>
+          )}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>About this group-buy</Text>
@@ -184,11 +204,13 @@ export default function CampaignDetailScreen() {
       <View style={styles.actionBar}>
         <Pressable
           onPress={onPrimary}
-          disabled={inFlight || (connected && !joined && !canJoin)}
+          disabled={ctaDisabled}
           style={({ pressed }) => [
             styles.cta,
-            pressed && styles.pressed,
-            (inFlight || (connected && !joined && !canJoin)) && styles.ctaDisabled,
+            pressed && !ctaDisabled && styles.pressed,
+            // Joined keeps its own visual treatment so the terminal state
+            // reads as success rather than a generic disabled grey.
+            ctaDisabled && !joined && styles.ctaDisabled,
             joined && !inFlight && styles.ctaJoined,
           ]}>
           {inFlight ? (
@@ -221,6 +243,10 @@ export default function CampaignDetailScreen() {
         message={txError}
         onRetry={canJoin && connected ? onRetry : undefined}
         onDismiss={onDismissError}
+        onGoHome={() => {
+          resetTx();
+          router.replace('/(tabs)');
+        }}
       />
     </SafeAreaView>
   );
@@ -238,7 +264,7 @@ function labelForUI(args: {
   if (args.txState === 'confirming') return 'Confirming…';
   if (args.txState === 'success') return 'Joined ✓';
   if (!args.connected) return 'Connect wallet to join';
-  if (args.joined) return 'You’re in — leave campaign';
+  if (args.joined) return 'Joined ✓';
   if (args.campaignStatus === 'active') return `Join for ${args.price} SOL`;
   return labelForStatus(args.campaignStatus);
 }
@@ -341,24 +367,19 @@ const makeStyles = (c: ThemeColors) =>
     pillDot: { width: 6, height: 6, borderRadius: 3 },
     pillText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.4 },
 
-    statsCard: {
-      backgroundColor: c.bgCard,
-      borderRadius: 18,
-      padding: 18,
-      gap: 16,
-      borderWidth: 1,
-      borderColor: c.border,
+    statsBlock: {
+      gap: 18,
+      paddingVertical: 4,
     },
-    statsRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    stat: { flex: 1, gap: 4 },
+    statsRow: { flexDirection: 'row', alignItems: 'center', gap: 32 },
+    stat: { gap: 4 },
     statLabel: {
       color: c.textSubtle,
       fontSize: 11,
       textTransform: 'uppercase',
       letterSpacing: 1,
     },
-    statValue: { color: c.text, fontSize: 15, fontWeight: '600' },
-    statDivider: { width: 1, alignSelf: 'stretch', backgroundColor: c.border },
+    statValue: { color: c.text, fontSize: 17, fontWeight: '600' },
 
     section: { gap: 10, marginTop: 6 },
     sectionTitle: { color: c.text, fontSize: 16, fontWeight: '600' },

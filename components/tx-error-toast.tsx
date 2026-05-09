@@ -8,9 +8,10 @@ type Props = {
   message: string | null;
   onRetry?: () => void;
   onDismiss: () => void;
+  onGoHome?: () => void;
 };
 
-export function TxErrorToast({ visible, message, onRetry, onDismiss }: Props) {
+export function TxErrorToast({ visible, message, onRetry, onDismiss, onGoHome }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const translateY = useRef(new Animated.Value(120)).current;
@@ -38,27 +39,38 @@ export function TxErrorToast({ visible, message, onRetry, onDismiss }: Props) {
       pointerEvents={visible ? 'auto' : 'none'}
       style={[styles.wrap, { opacity, transform: [{ translateY }] }]}>
       <View style={styles.toast}>
-        <View style={styles.dot} />
-        <View style={styles.body}>
-          <Text style={styles.title}>Transaction failed</Text>
-          {message && (
-            <Text style={styles.message} numberOfLines={2}>
-              {message}
-            </Text>
+        <View style={styles.headerRow}>
+          <View style={styles.dot} />
+          <View style={styles.body}>
+            <Text style={styles.title}>Transaction failed</Text>
+            {message && (
+              <Text style={styles.message} numberOfLines={3}>
+                {message}
+              </Text>
+            )}
+          </View>
+          <Pressable
+            onPress={onDismiss}
+            style={({ pressed }) => [styles.dismiss, pressed && styles.pressed]}>
+            <Text style={styles.dismissText}>✕</Text>
+          </Pressable>
+        </View>
+        <View style={styles.actions}>
+          {onGoHome && (
+            <Pressable
+              onPress={onGoHome}
+              style={({ pressed }) => [styles.homeBtn, pressed && styles.pressed]}>
+              <Text style={styles.homeText}>Back to home</Text>
+            </Pressable>
+          )}
+          {onRetry && (
+            <Pressable
+              onPress={onRetry}
+              style={({ pressed }) => [styles.retry, pressed && styles.pressed]}>
+              <Text style={styles.retryText}>Retry</Text>
+            </Pressable>
           )}
         </View>
-        {onRetry && (
-          <Pressable
-            onPress={onRetry}
-            style={({ pressed }) => [styles.retry, pressed && styles.pressed]}>
-            <Text style={styles.retryText}>Retry</Text>
-          </Pressable>
-        )}
-        <Pressable
-          onPress={onDismiss}
-          style={({ pressed }) => [styles.dismiss, pressed && styles.pressed]}>
-          <Text style={styles.dismissText}>✕</Text>
-        </Pressable>
       </View>
     </Animated.View>
   );
@@ -73,8 +85,6 @@ const makeStyles = (c: ThemeColors) =>
       bottom: 100,
     },
     toast: {
-      flexDirection: 'row',
-      alignItems: 'center',
       gap: 12,
       backgroundColor: c.bgCard,
       borderColor: c.error,
@@ -82,13 +92,23 @@ const makeStyles = (c: ThemeColors) =>
       borderRadius: 14,
       padding: 14,
     },
-    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.error },
-    body: { flex: 1, gap: 2 },
-    title: { color: c.text, fontSize: 14, fontWeight: '600' },
-    message: { color: c.textSubtle, fontSize: 12, lineHeight: 16 },
+    headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.error, marginTop: 6 },
+    body: { flex: 1, gap: 4 },
+    title: { color: c.text, fontSize: 15, fontWeight: '600' },
+    message: { color: c.textSubtle, fontSize: 12, lineHeight: 17 },
+    actions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
+    homeBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    homeText: { color: c.text, fontSize: 13, fontWeight: '600' },
     retry: {
       paddingHorizontal: 12,
-      paddingVertical: 6,
+      paddingVertical: 8,
       borderRadius: 8,
       backgroundColor: c.errorSoft,
     },
