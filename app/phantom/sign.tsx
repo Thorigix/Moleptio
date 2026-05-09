@@ -1,8 +1,9 @@
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { ThemeColors, useTheme } from '@/services/theme';
+import { handlePhantomSignCallbackParams } from '@/services/wallet';
 import { useWalletStore } from '@/services/wallet/store';
 
 export default function PhantomSignCallback() {
@@ -28,6 +29,16 @@ export default function PhantomSignCallback() {
       errorMessage: params.errorMessage,
     });
   }, []);
+
+  // Fallback: Expo Router may consume the initial URL before Linking listeners
+  // see it. Process the query params directly; wallet handler is guarded.
+  useEffect(() => {
+    if (params.errorCode) return;
+    if (lastSignature && !signing) return;
+    handlePhantomSignCallbackParams(params as any).catch((e) => {
+      console.warn('[Phantom] sign param handler failed:', e);
+    });
+  }, [params, lastSignature, signing]);
 
   useEffect(() => {
     // Pop back to whichever screen initiated the sign (campaign detail, home,

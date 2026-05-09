@@ -1,26 +1,27 @@
+import { useCampaignStore } from '@/services/campaigns/store';
+import { Transaction } from '@solana/web3.js';
+import bs58 from 'bs58';
 import * as Linking from 'expo-linking';
 import nacl from 'tweetnacl';
-import bs58 from 'bs58';
-import {
-  newDappKeyPair,
-  encodeBs58,
-  decodeBs58,
-  sharedSecret,
-  decryptPayload,
-  encryptPayload,
-} from './crypto';
 import { connection } from '../solana/connection';
-import { useCampaignStore } from '@/services/campaigns/store';
 import { useTxStore } from '../tx/state';
-import { useWalletStore } from './store';
 import {
-  saveDappKeyPair,
-  loadDappKeyPair,
+  decodeBs58,
+  decryptPayload,
+  encodeBs58,
+  encryptPayload,
+  newDappKeyPair,
+  sharedSecret,
+} from './crypto';
+import {
   clearDappKeyPair,
-  saveSession,
-  loadSession,
   clearSession,
+  loadDappKeyPair,
+  loadSession,
+  saveDappKeyPair,
+  saveSession,
 } from './storage';
+import { useWalletStore } from './store';
 
 const PHANTOM_BASE = 'https://phantom.app/ul/v1';
 const APP_URL = 'https://moleptio.app';
@@ -39,6 +40,9 @@ let pendingSign: {
   resolve: (signature: string) => void;
   reject: (e: Error) => void;
 } | null = null;
+let lastHandledSignKey: string | null = null;
+const inFlightSignatures = new Set<string>();
+const completedSignatures = new Set<string>();
 let hydratePromise: Promise<void> | null = null;
 
 async function hydrate(): Promise<void> {
@@ -54,24 +58,51 @@ function ensureHydrated(): Promise<void> {
   return hydratePromise;
 }
 
+type QueryParamValue = string | string[] | undefined;
+type QueryParamMap = Record<string, QueryParamValue>;
+type NormalizedQueryParams = Record<string, string | undefined>;
+
+function normalizeQueryParams(qp: QueryParamMap): NormalizedQueryParams {
+  const out: NormalizedQueryParams = {};
+  for (const [k, v] of Object.entries(qp)) {
+    if (typeof v === 'string') out[k] = v;
+    else if (Array.isArray(v)) out[k] = v[0];
+    else out[k] = undefined;
+  }
+  return out;
+}
+
 const redirect = (path: string) => Linking.createURL(path);
 
 // ── Connect ────────────────────────────────────────────────────────────────
 export async function connect() {
-  dappKeyPair = newDappKeyPair();
-  // Persist BEFORE opening Phantom — Android may kill our process during the
-  // deeplink round-trip, so the keypair must already be on disk by then.
-  await saveDappKeyPair(dappKeyPair);
-
-  const params = new URLSearchParams({
-    dapp_encryption_public_key: encodeBs58(dappKeyPair.publicKey),
-    cluster: CLUSTER,
-    app_url: APP_URL,
-    redirect_link: redirect('phantom/connect'),
-  });
-
   useWalletStore.getState().setConnecting(true);
-  await Linking.openURL(`${PHANTOM_BASE}/connect?${params.toString()}`);
+  try {
+    dappKeyPair = newDappKeyPair();
+    // Persist BEFORE opening Phantom — Android may kill our process during the
+    // deeplink round-trip, so the keypair must already be on disk by then.
+    await saveDappKeyPair(dappKeyPair);
+
+    // Standalone builds can be killed very quickly when switching apps.
+    // Read back immediately to ensure the keypair is actually persisted.
+    const persisted = await loadDappKeyPair();
+    if (!persisted) {
+      throw new Error('Failed to persist dapp keypair. Please try again.');
+    }
+    dappKeyPair = persisted;
+
+    const params = new URLSearchParams({
+      dapp_encryption_public_key: encodeBs58(dappKeyPair.publicKey),
+      cluster: CLUSTER,
+      app_url: APP_URL,
+      redirect_link: redirect('phantom/connect'),
+    });
+
+    await Linking.openURL(`${PHANTOM_BASE}/connect?${params.toString()}`);
+  } catch (e) {
+    useWalletStore.getState().setConnecting(false);
+    throw e;
+  }
 }
 
 // ── Disconnect ─────────────────────────────────────────────────────────────
@@ -83,7 +114,7 @@ export function disconnect() {
   useWalletStore.getState().setSigning(false);
   dappKeyPair = null;
   // Fire-and-forget — no need to block UI on storage clear.
-  Promise.all([clearDappKeyPair(), clearSession()]).catch(() => {});
+  Promise.all([clearDappKeyPair(), clearSession()]).catch(() => { });
 }
 
 // ── Sign + send transaction (structure only) ───────────────────────────────
@@ -157,6 +188,23 @@ export function initDeepLinkListener() {
   return () => sub.remove();
 }
 
+// Exposed for route-level fallbacks: Expo Router can consume the initial URL
+// before Linking.getInitialURL() sees it. These helpers let callback screens
+// process the query params directly.
+export async function ensureWalletHydrated() {
+  await ensureHydrated();
+}
+
+export async function handlePhantomConnectCallbackParams(qp: QueryParamMap) {
+  await ensureHydrated();
+  await handleConnectCallback(normalizeQueryParams(qp));
+}
+
+export async function handlePhantomSignCallbackParams(qp: QueryParamMap) {
+  await ensureHydrated();
+  await handleSignCallback(normalizeQueryParams(qp));
+}
+
 // ── Deeplink callback handler ──────────────────────────────────────────────
 export async function handleDeepLink(url: string) {
   // Always wait for AsyncStorage restore before reading dappKeyPair / session.
@@ -166,7 +214,7 @@ export async function handleDeepLink(url: string) {
 
   const parsed = Linking.parse(url);
   const path = parsed.path ?? '';
-  const qp = (parsed.queryParams ?? {}) as Record<string, string | undefined>;
+  const qp = normalizeQueryParams((parsed.queryParams ?? {}) as QueryParamMap);
 
   if (qp.errorCode) {
     useWalletStore.getState().setConnecting(false);
@@ -175,19 +223,38 @@ export async function handleDeepLink(url: string) {
     return;
   }
 
-  if (path.endsWith('phantom/connect')) handleConnectCallback(qp);
-  else if (path.endsWith('phantom/sign')) handleSignCallback(qp);
+  try {
+    if (path.endsWith('phantom/connect')) await handleConnectCallback(qp);
+    else if (path.endsWith('phantom/sign')) await handleSignCallback(qp);
+    else {
+      // Fallback: some environments produce odd paths; if required params exist,
+      // still attempt to handle.
+      if (qp.phantom_encryption_public_key && qp.data && qp.nonce) {
+        await handleConnectCallback(qp);
+      } else if (qp.data && qp.nonce) {
+        await handleSignCallback(qp);
+      }
+    }
+  } catch (e: any) {
+    console.warn('[Phantom] deeplink handling failed:', e);
+    useWalletStore.getState().setConnecting(false);
+    pendingSign?.reject(e as Error);
+    pendingSign = null;
+  }
 }
 
-function handleConnectCallback(qp: Record<string, string | undefined>) {
+async function handleConnectCallback(qp: Record<string, string | undefined>) {
   if (!dappKeyPair) {
-    console.warn('[Phantom] connect callback received but no dapp keypair in memory or storage');
-    return;
+    // One last attempt: load from storage. This covers cases where the URL was
+    // handled before module state was initialized.
+    dappKeyPair = await loadDappKeyPair();
+  }
+  if (!dappKeyPair) {
+    throw new Error('Missing dapp keypair — reconnect wallet and try again');
   }
   const { phantom_encryption_public_key, data, nonce } = qp;
   if (!phantom_encryption_public_key || !data || !nonce) {
-    console.warn('[Phantom] connect callback missing required params', qp);
-    return;
+    throw new Error('Phantom connect callback missing required parameters');
   }
 
   const shared = sharedSecret(decodeBs58(phantom_encryption_public_key), dappKeyPair.secretKey);
@@ -203,7 +270,7 @@ function handleConnectCallback(qp: Record<string, string | undefined>) {
   useWalletStore.getState().setSession(session);
   useWalletStore.getState().setConnecting(false);
   // Persist so signing can survive a future background event too.
-  saveSession(session).catch(() => {});
+  saveSession(session).catch(() => { });
 }
 
 const CONFIRM_TIMEOUT_MS = 20_000;
@@ -227,11 +294,33 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
+function signatureFromSignedTxBytes(bytes: Uint8Array): string | null {
+  try {
+    const tx = Transaction.from(bytes);
+    const sig = tx.signatures?.[0]?.signature;
+    if (!sig) return null;
+    return bs58.encode(sig);
+  } catch {
+    return null;
+  }
+}
+
+function isAlreadyProcessedError(e: any): boolean {
+  const msg = String(e?.message ?? '');
+  return msg.includes('already been processed') || msg.includes('already processed');
+}
+
 async function handleSignCallback(qp: Record<string, string | undefined>) {
   const session = useWalletStore.getState().session;
   if (!session) return;
   const { data, nonce } = qp;
   if (!data || !nonce) return;
+
+  let extractedSignature: string | null = null;
+
+  const key = `${nonce}:${data.slice(0, 24)}`;
+  if (lastHandledSignKey === key) return;
+  lastHandledSignKey = key;
 
   // Drives a guaranteed final transition for the UI state machine even when
   // there's no pendingSign promise to resolve (e.g. the originating screen
@@ -247,8 +336,39 @@ async function handleSignCallback(qp: Record<string, string | undefined>) {
     const decoded = decryptPayload<{ transaction: string }>(data, nonce, session.sharedSecret);
     const signedTxBytes = bs58.decode(decoded.transaction);
 
+    extractedSignature = signatureFromSignedTxBytes(signedTxBytes);
+    if (extractedSignature) {
+      const lastSig = useWalletStore.getState().lastSignature;
+      const txSig = useTxStore.getState().signature;
+
+      if (
+        completedSignatures.has(extractedSignature) ||
+        lastSig === extractedSignature ||
+        txSig === extractedSignature
+      ) {
+        console.log('[Solana] duplicate sign callback ignored (already handled)');
+        return;
+      }
+      if (inFlightSignatures.has(extractedSignature)) {
+        console.log('[Solana] duplicate sign callback ignored (in-flight)');
+        return;
+      }
+      inFlightSignatures.add(extractedSignature);
+    }
+
     // Broadcast via our own devnet RPC. Phantom did the signing only.
-    const signature = await connection.sendRawTransaction(signedTxBytes);
+    let signature: string;
+    try {
+      signature = await connection.sendRawTransaction(signedTxBytes);
+    } catch (e: any) {
+      // If another handler already broadcasted this exact signed tx, treat the
+      // duplicate send as success and continue confirming.
+      if (extractedSignature && isAlreadyProcessedError(e)) {
+        signature = extractedSignature;
+      } else {
+        throw e;
+      }
+    }
     console.log('[Solana] SIGNATURE RECEIVED:', signature);
     console.log('[Solana] explorer:', explorerUrl(signature));
     console.log('[CONFIRM] waiting…');
@@ -284,11 +404,15 @@ async function handleSignCallback(qp: Record<string, string | undefined>) {
     useTxStore.getState().setSignature(signature);
     useTxStore.getState().setState('success');
     pendingSign?.resolve(signature);
+
+    completedSignatures.add(signature);
   } catch (e: any) {
     console.warn('[Solana] FAILED — sign/confirm error:', e);
     fail(e?.message ?? 'Unknown sign/confirm error');
   } finally {
     useWalletStore.getState().setSigning(false);
     pendingSign = null;
+
+    if (extractedSignature) inFlightSignatures.delete(extractedSignature);
   }
 }

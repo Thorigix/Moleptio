@@ -1,8 +1,9 @@
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { ThemeColors, useTheme } from '@/services/theme';
+import { handlePhantomConnectCallbackParams } from '@/services/wallet';
 import { useWalletStore } from '@/services/wallet/store';
 
 export default function PhantomConnectCallback() {
@@ -16,7 +17,9 @@ export default function PhantomConnectCallback() {
   }>();
 
   const session = useWalletStore((s) => s.session);
+  const setConnecting = useWalletStore((s) => s.setConnecting);
   const [timedOut, setTimedOut] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -31,6 +34,28 @@ export default function PhantomConnectCallback() {
     });
   }, []);
 
+  // Fallback: Expo Router may consume the initial URL before Linking listeners
+  // see it. In that case, process the query params directly to finalize the
+  // Phantom session.
+  useEffect(() => {
+    if (session) return;
+    if (params.errorCode) return;
+    const missing =
+      !params.phantom_encryption_public_key || !params.nonce || !params.data;
+    if (missing) {
+      // If we landed here without Phantom's required payload, don't wait for a timeout.
+      setLocalError('Phantom callback is missing required parameters (nonce/data/public key).');
+      setConnecting(false);
+      return;
+    }
+
+    handlePhantomConnectCallbackParams(params as any).catch((e) => {
+      console.warn('[Phantom] connect param handler failed:', e);
+      setLocalError(e?.message ?? 'Failed to finalize Phantom session.');
+      setConnecting(false);
+    });
+  }, [params, session, setConnecting]);
+
   // The deeplink listener registered in app/_layout.tsx decrypts the payload
   // and writes the session to the store. We just wait for that to land, then
   // bounce back to home. 8s safety timeout in case something goes wrong.
@@ -43,11 +68,11 @@ export default function PhantomConnectCallback() {
       const t = setTimeout(() => router.replace('/(tabs)'), 0);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(() => setTimedOut(true), 8000);
+    const t = setTimeout(() => setTimedOut(true), 12000);
     return () => clearTimeout(t);
   }, [session, router]);
 
-  const errored = !!params.errorCode || timedOut;
+  const errored = !!params.errorCode || timedOut || !!localError;
 
   return (
     <View style={styles.container}>
@@ -55,7 +80,7 @@ export default function PhantomConnectCallback() {
         <>
           <Text style={styles.title}>Connection failed</Text>
           <Text style={styles.subtitle}>
-            {params.errorMessage ?? 'Phantom did not return a valid session. Try again.'}
+            {params.errorMessage ?? localError ?? 'Phantom did not return a valid session. Try again.'}
           </Text>
         </>
       ) : (
