@@ -1,60 +1,87 @@
-# Welcome to your Expo app 👋
+# Moleptio
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Mobile group-buy marketplace prototype, settled on Solana.
 
-## Get started
+Moleptio explores a simple idea: **group buys feel safer when the “money logic” is transparent and auditable**. Today this repo ships a devnet demo where every action is wallet-signed and visible.
 
-1. Install dependencies
+## What Moleptio does
 
-   ```bash
-   npm install
-   ```
+- Browse group-buy campaigns (price, threshold, deadline)
+- Join a campaign via a **Phantom-approved Solana devnet transaction**
+- Track campaign lifecycle statuses (open → ended/expired → next steps)
+- Fund your Solana wallet using **LI.FI cross-chain routing for USDC** (quote/route is real)
 
-2. Start the app
+## Demo truth (what’s real vs planned)
 
-   ```bash
-   npx expo start
-   ```
+**Solana joins (real signing, placeholder settlement):**
 
-In the output, you'll find options to open the app in a
+- Joining a campaign signs a Solana devnet transaction using `SystemProgram.transfer`.
+- In the current demo this is implemented as a **self-transfer placeholder** so you can clearly see the amount you are approving.
+- Escrow, settlement, and refunds are **planned** (not live yet).
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+**LI.FI bridging (real quote/route, demo execution):**
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- We fetch real routes using LI.FI REST `POST https://li.quest/v1/advanced/routes`.
+- In Expo Go we do **not** have an EVM wallet/signer, so “execute” is simulated and stored as a logical receipt.
 
-## Get a fresh project
+## Tech stack
 
-When you're ready, run:
+- Expo SDK 54 + React Native + `expo-router`
+- Solana: `@solana/web3.js` + Phantom deep-link signing (devnet)
+- State: Zustand + AsyncStorage persistence
+- LI.FI: REST (li.quest v1)
+
+## Quick start
+
+Requirements: Node.js + npm.
 
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Android builds (EAS)
 
-## Learn more
+This repo includes EAS build profiles:
 
-To learn more about developing your project with Expo, look at the following resources:
+- `preview` → Android APK (internal distribution)
+- `production` → Android AAB
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Typical usage:
 
-## Solana program address (submission)
+```bash
+npm i -g eas-cli
+eas login
 
-This prototype does not ship a custom on-chain Solana program yet. If a submission form requires a "Program Address", you can generate a stable Program ID (a keypair pubkey) and keep the keypair locally:
+eas build -p android --profile preview
+# or
+eas build -p android --profile production
+```
+
+## Submission quick facts
+
+- Smart Contract / Program Address (planned Program ID):
+   - `8mmpotBBTuLKpYKk5yPNfBu7xrc359r1VDuTJd9U2TAS`
+   - Note: This is a generated Program ID for submission purposes; it is **not deployed** yet.
+- Current on-chain program used by the demo join tx: Solana System Program
+   - `11111111111111111111111111111111`
+- Android package: `com.dev3pack.moleptio`
+
+## Generate a Program Address (if required)
+
+If a submission form requires a “Program Address”, you can generate a stable Program ID (a keypair pubkey) and keep the keypair locally.
 
 ```bash
 node scripts/generate-program-id.js --out .secrets/escrow-program-keypair.json
 ```
 
-The command prints the Program ID to stdout.
+- The command prints the Program ID to stdout.
+- `.secrets/` is ignored by git.
 
-## Join the community
+## Repo map
 
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- `app/` — screens (expo-router)
+- `services/solana/` — join transaction building & send
+- `services/lifi/` — LI.FI REST route quoting + demo execution receipt
+- `services/campaigns/` — campaign store, seed data, lifecycle derivation
+- `services/wallet/` — wallet session + local crypto/storage helpers
